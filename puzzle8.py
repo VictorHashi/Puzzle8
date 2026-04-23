@@ -1,11 +1,10 @@
 """
-Puzzle-8 -- Tres Estrategias de Busca
-======================================
-1. Busca em Largura (BFS) pura
+Puzzle-8
+1. Busca em Largura pura
 2. Busca Gulosa  f(x) = g(x)   onde g(x) = pecas fora do lugar
 3. A*            f(x) = g(x) + h(x)
-                   g(x) = pecas fora do lugar
-                   h(x) = distancia de Manhattan
+                 g(x) = pecas fora do lugar
+                 h(x) = distancia de Manhattan
 """
 
 import heapq
@@ -14,18 +13,23 @@ import time
 import random
 from collections import deque
 
-# Garante saida UTF-8 no terminal Windows
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     try:
         sys.stdout.reconfigure(encoding="utf-8")
     except AttributeError:
         pass
 
-GOAL = (1, 2, 3,
-        4, 5, 6,
-        7, 8, 0)   # 0 representa o espaço vazio
+ESTADO_FINAL = (1, 2, 3,
+                4, 5, 6,
+                7, 8, 0)   # 0 representa o espaço vazio
 
-MOVES = {           # índice do espaço → índices vizinhos válidos
+"""
+ESTADO_FINAL = (4, 5, 6,
+                7, 0, 8,
+                1, 2, 3)
+"""
+
+MOVES = {           # índice do espaço = índices vizinhos válidos
     0: [1, 3],
     1: [0, 2, 4],
     2: [1, 5],
@@ -53,7 +57,7 @@ def get_neighbors(state: tuple) -> list[tuple]:
 # ─────────────────────────────────────────────
 
 def misplaced(state: tuple) -> int:
-    return sum(1 for i, v in enumerate(state) if v != 0 and v != GOAL[i])
+    return sum(1 for i, v in enumerate(state) if v != 0 and v != ESTADO_FINAL[i])
 
 
 def manhattan(state: tuple) -> int:
@@ -61,7 +65,7 @@ def manhattan(state: tuple) -> int:
     for i, v in enumerate(state):
         if v == 0:
             continue
-        goal_idx = GOAL.index(v)
+        goal_idx = ESTADO_FINAL.index(v)
         row_cur, col_cur = divmod(i, 3)
         row_goal, col_goal = divmod(goal_idx, 3)
         dist += abs(row_cur - row_goal) + abs(col_cur - col_goal)
@@ -77,7 +81,7 @@ def bfs(start: tuple) -> dict:
     Busca em Largura (BFS).
     Retorna dicionário com solução e métricas.
     """
-    if start == GOAL:
+    if start == ESTADO_FINAL:
         return {"path": [start], "expanded": 0, "time": 0.0}
 
     t0 = time.perf_counter()
@@ -91,7 +95,7 @@ def bfs(start: tuple) -> dict:
         expanded += 1
 
         for nb in get_neighbors(state):
-            if nb == GOAL:
+            if nb == ESTADO_FINAL:
                 elapsed = time.perf_counter() - t0
                 return {
                     "path": path + [nb],
@@ -110,7 +114,7 @@ def greedy(start: tuple) -> dict:
     Busca Gulosa com f(x) = g(x) = número de peças fora do lugar.
     Usa fila de prioridade (min-heap) ordenada por g(x).
     """
-    if start == GOAL:
+    if start == ESTADO_FINAL:
         return {"path": [start], "expanded": 0, "time": 0.0}
 
     t0 = time.perf_counter()
@@ -128,7 +132,7 @@ def greedy(start: tuple) -> dict:
         visited.add(state)
         expanded += 1
 
-        if state == GOAL:
+        if state == ESTADO_FINAL:
             elapsed = time.perf_counter() - t0
             return {"path": path, "expanded": expanded, "time": elapsed}
 
@@ -143,48 +147,61 @@ def greedy(start: tuple) -> dict:
 def astar(start: tuple) -> dict:
     """
     A* com f(x) = g(x) + h(x).
-      g(x) = número de peças fora do lugar
+      g(x) = custo real (profundidade/número de movimentos)
       h(x) = distância de Manhattan
     """
-    if start == GOAL:
+    if start == ESTADO_FINAL:
         return {"path": [start], "expanded": 0, "time": 0.0}
 
     t0 = time.perf_counter()
     counter = 0
-    g0 = misplaced(start)
-    h0 = manhattan(start)
-    heap = [(g0 + h0, counter, start, [start])]
-    # best_f[state] = menor f já registrado para aquele estado
-    best_f = {start: g0 + h0}
+    
+    g = {start: 0}
+    h_start = manhattan(start)
+    
+    heap = [(h_start, counter, start)]  # Não armazena caminho aqui
+    parent = {start: None}
+    visited = set()
     expanded = 0
 
     while heap:
-        f, _, state, path = heapq.heappop(heap)
-
-        if f > best_f.get(state, float("inf")):
+        f, _, state = heapq.heappop(heap)
+        
+        if state in visited:
             continue
-
+        visited.add(state)
         expanded += 1
-
-        if state == GOAL:
+        
+        if state == ESTADO_FINAL:
+            # Reconstruir caminho usando parent pointers
+            path = []
+            curr = state
+            while curr is not None:
+                path.append(curr)
+                curr = parent[curr]
+            path.reverse()
+            
             elapsed = time.perf_counter() - t0
             return {"path": path, "expanded": expanded, "time": elapsed}
-
+        
+        g_current = g[state]
         for nb in get_neighbors(state):
-            g_nb = misplaced(nb)
-            h_nb = manhattan(nb)
-            f_nb = g_nb + h_nb
-            if f_nb < best_f.get(nb, float("inf")):
-                best_f[nb] = f_nb
-                counter += 1
-                heapq.heappush(heap, (f_nb, counter, nb, path + [nb]))
+            if nb not in visited:
+                g_new = g_current + 1  # Apenas +1 por movimento
+                
+                if nb not in g or g_new < g[nb]:
+                    g[nb] = g_new
+                    h_nb = manhattan(nb)
+                    f_nb = g_new + h_nb
+                    parent[nb] = state
+                    counter += 1
+                    heapq.heappush(heap, (f_nb, counter, nb))
 
     return {"path": None, "expanded": expanded, "time": time.perf_counter() - t0}
 
 
 
 def print_board(state: tuple):
-    """Imprime o tabuleiro 3×3."""
     for i in range(0, 9, 3):
         row = []
         for v in state[i:i+3]:
@@ -212,12 +229,7 @@ def print_result(name: str, result: dict, show_path: bool = False):
                 print_board(s)
 
 
-# Menu
 def is_solvable(state: tuple) -> bool:
-    """
-    Verifica se o puzzle é solúvel contando inversões.
-    Para tabuleiro 3×3: solucionável se o número de inversões for par.
-    """
     tiles = [v for v in state if v != 0]
     inv = sum(
         1
@@ -230,13 +242,21 @@ def is_solvable(state: tuple) -> bool:
 
 
 def generate_random_board() -> tuple:
-    """Gera um estado inicial aleatório que seja obrigatoriamente solúvel e diferente do objetivo."""
-    state = list(GOAL)
-    while True:
-        random.shuffle(state)
-        t_state = tuple(state)
-        if is_solvable(t_state) and t_state != GOAL:
-            return t_state
+    """
+    Gera um tabuleiro aleatório aplicando movimentos válidos a partir
+    do estado final. Garante que sempre haverá solução.
+    """
+    state = ESTADO_FINAL
+    num_moves = random.randint(10, 50)
+    
+    for _ in range(num_moves):
+        neighbors = get_neighbors(state)
+        state = random.choice(neighbors)
+    
+    if state == ESTADO_FINAL:
+        return generate_random_board()
+    
+    return state
 
 
 def main():
@@ -247,12 +267,8 @@ def main():
     print("\nEstado inicial:")
     print_board(state)
 
-    if not is_solvable(state):
-        print("\n⚠  Este estado NÃO tem solução (número de inversões ímpar).")
-        return
-
     print(f"\nObjetivo:")
-    print_board(GOAL)
+    print_board(ESTADO_FINAL)
 
     print("\nEscolha o(s) algoritmo(s):")
     print("  [1] BFS — Busca em Largura")
